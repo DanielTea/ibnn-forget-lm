@@ -71,10 +71,31 @@ So combining them doesn't rescue IBNN: the best model is plain **`sm + forget`**
 neuron is null regardless of the attention it's paired with — consistent with the parent study's
 finding that competition over the FFN's *unordered* channels has nothing to exploit.
 
-### New IBNN-FFN ideas (`make ideas`)
+### New IBNN-FFN ideas (`make ideas`, tinyshakespeare, 3 seeds; smaller `d_ff=192`)
 
-_Bake-off of three new variants (below) running — table here once complete; raw numbers in
-`runs/ideas_*.json`._
+Exact held-out **bits-per-char** (lower is better):
+
+| variant | params | BPC | Δ vs sm | verdict |
+|---|---|---|---|---|
+| sm (baseline) | 0.373M | 2.624 ± 0.038 | — | — |
+| ibnn_meanfield | 0.373M | 2.619 ± 0.035 | −0.006 | tie |
+| **#1 ibnn_gate** | 0.373M | 2.626 ± 0.010 | +0.002 | tie |
+| **#2 ibnn_topo** | 0.375M | 2.650 ± 0.030 | +0.026 | tie / worst mean |
+| **#3 ibnn_sharpen** (2 seeds) | 0.373M | 2.641 | +0.016 | tie / slightly worse |
+
+**None of the three new ideas beats the standard FFN.** As honestly forecast, the FFN-channel
+null holds. Notes worth keeping:
+- **#1 gate** lands exactly on `sm` (+0.002) but with **much lower variance** (±0.010 vs ±0.038)
+  — the competition gate *stabilizes* training without improving the mean.
+- **#2 topo** has the **worst mean** (+0.026) — giving the channels a learned geometry *hurt*,
+  echoing the earlier full-`D×D` learned-coupling result: extra structure/params on the unordered
+  FFN channels backfire rather than help.
+- **#3 sharpen** (λ>0) is a tie / marginally worse.
+
+Across now **five** forms of FFN-channel coupling (mean-field, learned-`D×D`, learned-topology,
+gate, sharpen) the verdict is unanimous: **competition over a Transformer FFN's unordered
+channels is a dead end.** The structured token axis (attention's forget gate) remains the only
+place a learnable-decay mechanism earns its keep here.
 
 ## Can IBNN be fixed? (new ideas, not in the literature)
 
