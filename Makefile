@@ -36,6 +36,9 @@ attn-test: ## Just softmax vs forgetting attention (standard FFN), 3 seeds
 ideas: ## Bake-off of NEW IBNN-FFN variants (gate / topology / sharpen) vs sm + plain IBNN
 	$(PY) -m ibnn_lm.ideas_test --dataset $(DATASET) --seeds 0 1 2 --steps $(STEPS)
 
+robustness: ## Does forgetting attention survive input-noise robustness + the memorization gap?
+	$(PY) -m ibnn_lm.robustness --dataset $(DATASET) --seeds 0 1 2 --steps 2000
+
 train: ## Train one model (override FFN=ibnn ATTN=forget etc. via env if extended)
 	$(PY) -m ibnn_lm.train --dataset $(DATASET) --ffn ibnn --attn forget \
 		--d_model 128 --d_ff 256 --n_layer 3 --n_head 4 --block_size 128 \

@@ -118,6 +118,39 @@ The diagnosis says a fix must either give the channels *structure*, change compe
 Honest prior: FFN-channel tricks have tied or lost in 8+ prior runs, so these are quick
 falsification probes, not confident bets.
 
+## Does the forget-gate win survive robustness & anti-memorization? (`make robustness`)
+
+The IBNN paper's *actual* headline claims are **robustness to perturbation** and **resisting
+memorization**, not raw accuracy — and nobody (the IBNN paper *or* the Forgetting Transformer)
+checked forgetting attention on those. So we did, softmax vs forgetting attention, matched.
+
+![Forgetting attention is less robust to input noise](figures/fig1_robustness_crossover.png)
+
+**(1) Robustness to context noise** — eval BPC when a fraction ε of *context* tokens are randomly
+corrupted (targets kept clean), 3 seeds:
+
+| ε | softmax | forgetting |
+|---|---------|------------|
+| 0.00 (clean) | 2.416 ± 0.010 | **2.301 ± 0.010** |
+| 0.05 | 2.933 | **2.894** |
+| 0.10 | **3.417** | 3.447 |
+| 0.20 | **4.364** | 4.507 |
+| 0.30 | **5.229** | 5.415 |
+
+The forgetting model wins on clean text but **degrades faster under noise** — the advantage
+reverses at **ε ≈ 0.08**, and by ε = 0.20 softmax is ahead by 0.14 bpc (far beyond seed noise).
+Mechanistically clean: the forget gate's recency bias makes the model lean on recent tokens, so
+corrupting them hurts more; softmax spreads attention and averages out localized noise.
+
+**(2) Memorization** — generalization gap (val BPC − train BPC; smaller = less memorization):
+softmax **+0.249 ± 0.006**, forgetting **+0.269 ± 0.013**. The forget gate memorizes *slightly
+more*, not less — so it does **not** exhibit the anti-memorization property the IBNN paper prized.
+
+**Takeaway (new, not in the literature):** forgetting attention (FoX) buys clean-data accuracy at
+the cost of **robustness** — it is the more accurate model on clean text but the *less* robust one
+under input perturbation, and it doesn't memorize less. The clean-BPC headline hides a fragility
+trade-off that the robustness/anti-memorization lens exposes.
+
 ## Files
 
 ```
@@ -125,6 +158,8 @@ ibnn_lm/model.py         GPT; ffn="ibnn"|"sm", attn="softmax"|"forget"; GPT-2 in
 ibnn_lm/layers.py        IBNNLinear (mean-field or learned coupling) + IBNNMLP
 ibnn_lm/combo_test.py    the 2×2 factorial driver (FFN neuron × attention type)
 ibnn_lm/attn_test.py     softmax vs forgetting attention (standard FFN)
+ibnn_lm/ideas_test.py    bake-off of new IBNN-FFN variants (gate / topology / sharpen)
+ibnn_lm/robustness.py    input-noise robustness + memorization gap (the §"survive?" probes)
 ibnn_lm/train.py         training harness (cosine LR, early stop, checkpoints)
 ibnn_lm/evaluate.py      deterministic held-out BPC / perplexity
 ibnn_lm/generate.py      inference: prompt / stream / interactive REPL
