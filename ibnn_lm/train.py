@@ -48,6 +48,8 @@ def build_config(args, vocab_size: int) -> GPTConfig:
         ibnn_num_iters=args.num_iters,
         ibnn_chunk_size=args.chunk_size,
         ibnn_coupling=args.coupling,
+        ibnn_interaction=args.interaction,
+        ibnn_topo_dim=args.topo_dim,
     )
 
 
@@ -150,8 +152,11 @@ def build_arg_parser():
     ap.add_argument("--p", type=float, default=10.0)
     ap.add_argument("--chunk_size", type=int, default=0,
                     help="chunk the O(D^2) lateral term over this many hidden units (0=off)")
-    ap.add_argument("--coupling", choices=["meanfield", "learned"], default="meanfield",
-                    help="IBNN lateral weights: meanfield (1/D, parameter-free) or learned w_ik")
+    ap.add_argument("--coupling", choices=["meanfield", "learned", "topo"], default="meanfield",
+                    help="IBNN lateral weights: meanfield (1/D) | learned w_ik | topo (learned topology)")
+    ap.add_argument("--interaction", choices=["additive", "gate"], default="additive",
+                    help="how the lateral term acts: additive (z=y-λL) or multiplicative gate")
+    ap.add_argument("--topo_dim", type=int, default=4, help="channel-coordinate dim for coupling=topo")
     # optim
     ap.add_argument("--steps", type=int, default=2000)
     ap.add_argument("--batch_size", type=int, default=32)

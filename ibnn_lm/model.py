@@ -35,7 +35,9 @@ class GPTConfig:
     ibnn_p: float = 10.0
     ibnn_num_iters: int = 1     # 1 == lite (forward only); >1 unrolls the implicit solve
     ibnn_chunk_size: int = 0    # >0 computes the O(D^2) lateral term in chunks to save memory
-    ibnn_coupling: str = "meanfield"  # "meanfield" (paper, parameter-free) or "learned" (w_ik)
+    ibnn_coupling: str = "meanfield"  # "meanfield" (paper) | "learned" (w_ik) | "topo" (learned topology)
+    ibnn_interaction: str = "additive"  # "additive" (z=y-λL) | "gate" (v=φ(y)·2σ(λL))
+    ibnn_topo_dim: int = 4            # channel-coordinate dim for coupling="topo"
 
 
 class CausalSelfAttention(nn.Module):
@@ -126,6 +128,7 @@ class Block(nn.Module):
                 lam=cfg.ibnn_lambda, lam_trainable=cfg.ibnn_lambda_trainable,
                 p=cfg.ibnn_p, num_iters=cfg.ibnn_num_iters, activation="gelu",
                 chunk_size=cfg.ibnn_chunk_size, coupling=cfg.ibnn_coupling,
+                interaction=cfg.ibnn_interaction, topo_dim=cfg.ibnn_topo_dim,
             )
         elif cfg.ffn == "sm":
             self.mlp = StandardMLP(cfg)

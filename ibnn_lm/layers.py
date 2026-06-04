@@ -89,7 +89,7 @@ class IBNNLinear(nn.Module):
 
     def __init__(self, in_features, out_features, lam=-0.05, lam_trainable=True,
                  p=10.0, num_iters=1, tau=1.0, activation="gelu", bias=True, chunk_size=0,
-                 coupling="meanfield"):
+                 coupling="meanfield", interaction="additive", topo_dim=4, topo_tau=1.0):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -99,12 +99,22 @@ class IBNNLinear(nn.Module):
         self.activation = activation
         self.chunk_size = int(chunk_size)
         self.coupling = coupling
+        self.interaction = interaction        # "additive" (z = y - λL) | "gate" (v = φ(y)·2σ(λL))
+        self.topo_tau = float(topo_tau)
         if coupling == "learned":
             # w_ik initialised to 1/D => at init this is exactly the mean-field neuron.
             self.coupling_w = nn.Parameter(torch.full((out_features, out_features),
                                                       1.0 / out_features))
+        elif coupling == "topo":
+            # IDEA #2: each hidden channel gets a learned coordinate; the coupling weight is a
+            # softmax kernel over channel distances, so the unordered channels self-organize into
+            # a learned topology and the interaction becomes *local in that learned space*. Small
+            # init => nearly-uniform distances => starts close to mean-field.
+            self.coords = nn.Parameter(torch.randn(out_features, topo_dim) * 0.1)
         elif coupling != "meanfield":
             raise ValueError(f"unknown coupling {coupling}")
+        if interaction not in ("additive", "gate"):
+            raise ValueError(f"unknown interaction {interaction}")
 
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         nn.init.normal_(self.weight, std=0.02)
@@ -123,14 +133,29 @@ class IBNNLinear(nn.Module):
             return z
         raise ValueError(f"unknown activation {self.activation}")
 
+    def _coupling_weights(self):
+        """The (D, D) coupling matrix w_ik, or None for parameter-free mean field (1/D)."""
+        if self.coupling == "meanfield":
+            return None
+        if self.coupling == "learned":
+            return self.coupling_w
+        # topo: w_ik = softmax_k(-||e_i - e_k||^2 / tau); rows sum to 1 (a structured 1/D).
+        e = self.coords
+        d2 = (e * e).sum(-1, keepdim=True) + (e * e).sum(-1) - 2.0 * (e @ e.t())
+        return torch.softmax(-d2 / self.topo_tau, dim=1)
+
     def forward(self, x):
         y = F.linear(x, self.weight, self.bias)   # SM pre-activation (..., D)
+        w = self._coupling_weights()
+        if self.interaction == "gate":
+            # IDEA #1: use the lateral competition as a multiplicative gate (divisive-norm / GLU
+            # flavour) instead of an additive nudge. lam=0 => gate=1 => exactly the standard FFN.
+            lateral = _lateral_term(y, self.p, self.chunk_size, w)
+            return self._phi(y) * (2.0 * torch.sigmoid(self.lam * lateral))
         z = y
-        lam = self.lam
-        w = self.coupling_w if self.coupling == "learned" else None
         for _ in range(self.num_iters):
             lateral = _lateral_term(z, self.p, self.chunk_size, w)
-            z = (1.0 - self.tau) * z + self.tau * (y - lam * lateral)
+            z = (1.0 - self.tau) * z + self.tau * (y - self.lam * lateral)
         return self._phi(z)
 
     def extra_repr(self):
