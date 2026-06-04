@@ -52,7 +52,50 @@ python -m ibnn_lm.generate --ckpt checkpoints/ibnn_forget.pt --prompt "ROMEO:" -
 
 ## Results
 
-_Populated by `make combo` — see `runs/combo_*.json`. (Filled in after the first run.)_
+### The 2×2 factorial (`make combo`, tinyshakespeare, 3 seeds)
+
+Exact held-out **bits-per-char** (lower is better):
+
+|              | softmax attention | forgetting attention | forget effect |
+|--------------|-------------------|----------------------|---------------|
+| **SM FFN**   | 2.5245 ± 0.018    | **2.3357 ± 0.007**   | **−0.189**    |
+| **IBNN FFN** | 2.5432 ± 0.013    | 2.3567 ± 0.017       | −0.187        |
+| _IBNN effect_| _+0.019_          | _+0.021_             |               |
+
+**The verdict is clean and a little brutal for IBNN:**
+- **Forget gate = the entire win** (−0.19 bpc, essentially identical on both FFN rows).
+- **IBNN ≈ 0** — in fact +0.02 bpc (slightly *worse*), within noise, under *both* attention types.
+- **No interaction.** The effects are independent; IBNN adds nothing on top of the forget gate.
+
+So combining them doesn't rescue IBNN: the best model is plain **`sm + forget`**. The lateral
+neuron is null regardless of the attention it's paired with — consistent with the parent study's
+finding that competition over the FFN's *unordered* channels has nothing to exploit.
+
+### New IBNN-FFN ideas (`make ideas`)
+
+_Bake-off of three new variants (below) running — table here once complete; raw numbers in
+`runs/ideas_*.json`._
+
+## Can IBNN be fixed? (new ideas, not in the literature)
+
+The diagnosis says a fix must either give the channels *structure*, change competition from
+*smoothing* to something useful, or move it to a meaningful axis. Three variants implemented here
+(`ibnn_lm/ideas_test.py`, `make ideas`), each adding <1% params:
+
+- **#1 `ibnn_gate` — competition-as-gate.** Instead of an additive nudge `z = y − λL`, use the
+  lateral signal as a multiplicative gate: `v = φ(y) · 2σ(λL)`. Rides the one FFN trick that
+  *does* help Transformers (GLU/SwiGLU); `λ=0` is bit-identical to a standard FFN.
+- **#2 `ibnn_topo` — learned channel topology.** Give each hidden channel a learned coordinate
+  `eᵢ`; set `w_ik = softmax(−‖eᵢ−e_k‖²/τ)`. The unordered channels self-organize into a learned
+  geometry and the coupling becomes *local in that space* — the structured locality the CNN
+  version exploits, but learned. A constrained middle-ground between mean-field and the (failed)
+  full `D×D` learned coupling.
+- **#3 `ibnn_sharpen` — sharpen, don't smooth.** The paper only uses `λ≤0` (homogenizing). With
+  the lite layer there's no fixed point to destabilize, so flip to `λ>0`: soft winner-take-all
+  that *sparsifies* activations instead of averaging them.
+
+Honest prior: FFN-channel tricks have tied or lost in 8+ prior runs, so these are quick
+falsification probes, not confident bets.
 
 ## Files
 

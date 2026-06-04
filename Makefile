@@ -33,6 +33,9 @@ combo-enwik8: ## The 2×2 factorial on enwik8 byte-level at larger scale (single
 attn-test: ## Just softmax vs forgetting attention (standard FFN), 3 seeds
 	$(PY) -m ibnn_lm.attn_test --dataset $(DATASET) --seeds 0 1 2 --steps $(STEPS)
 
+ideas: ## Bake-off of NEW IBNN-FFN variants (gate / topology / sharpen) vs sm + plain IBNN
+	$(PY) -m ibnn_lm.ideas_test --dataset $(DATASET) --seeds 0 1 2 --steps $(STEPS)
+
 train: ## Train one model (override FFN=ibnn ATTN=forget etc. via env if extended)
 	$(PY) -m ibnn_lm.train --dataset $(DATASET) --ffn ibnn --attn forget \
 		--d_model 128 --d_ff 256 --n_layer 3 --n_head 4 --block_size 128 \
