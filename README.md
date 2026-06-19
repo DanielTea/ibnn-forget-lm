@@ -183,6 +183,35 @@ modalities. The paper's CNN gains come from *spatial* coupling, which this FFN p
 Run it: `python -m ibnn_lm.vlm --ffn ibnn --steps 800` (note: IBNN's O(d_ff²) term triggers a
 slow one-time MPS kernel compile on first run; the SM path is instant).
 
+## The real test: replicate the paper's SPATIAL coupling (`make cnn`)
+
+Every IBNN experiment above ported the neuron into an **FFN**, where the coupling runs over
+*unordered channels* — and always tied/lost. The paper's actual win comes from a **spatial
+cross-difference convolution**: coupling over a pixel's *spatial neighbours*, which are ordered
+and local. So we replicated that faithfully (`ibnn_lm/ibnn_cnn.py`) — a within-channel 3×3
+lateral term `L_i = (1/8)·Σ_{k∈N(i)} tanh(p·(z_k − z_i))` inside a small CNN — and compared to a
+standard CNN on Fashion-MNIST, including the paper's headline **data-efficiency** regime. (This
+coupling is `O(8)` per pixel, far cheaper than the FFN port's `O(d_ff²)`; `λ=0` is bit-identical
+to a plain conv, so it's a clean +1-scalar-per-conv superset.)
+
+Test accuracy (higher better):
+
+| train data | standard CNN | spatial-IBNN CNN | Δ | n seeds |
+|---|---|---|---|---|
+| 100% | 84.2 ± 2.9 | 83.7 ± 5.4 | −0.5 (tie) | 3 |
+| 5% | 78.0 ± 3.9 | 81.4 ± 3.2 | **+3.3** | 6 |
+| 2% | 81.4 ± 0.7 | 81.8 ± 0.4 | +0.4 | 6 |
+
+**Honest verdict: a slight, directionally-positive but within-noise edge at low data — not the
+clean win an early 3-seed run teased (+6.1%, since regressed to +3.3% with 6 seeds; the first run
+was inflated by one unlucky standard-CNN seed).** Still, this is the *most IBNN-favourable* signal
+in the whole investigation: with **spatial** coupling on **images** in the **scarce-data** regime,
+IBNN is never worse and slightly better — directionally consistent with the paper — whereas the
+FFN port on text was flat or *worse*. That qualitative difference (spatial ≥ standard; channel
+≤ standard) is the cleanest support for the running diagnosis: **the IBNN neuron needs a
+structured axis to couple over.** A rigorous claim of the data-efficiency benefit would need a
+more careful replication than a laptop 3-conv net at this noise level can provide.
+
 ## Files
 
 ```
@@ -193,6 +222,7 @@ ibnn_lm/attn_test.py     softmax vs forgetting attention (standard FFN)
 ibnn_lm/ideas_test.py    bake-off of new IBNN-FFN variants (gate / topology / sharpen)
 ibnn_lm/robustness.py    input-noise robustness + memorization gap (the §"survive?" probes)
 ibnn_lm/vlm.py           toy Vision-Language Model on Fashion-MNIST (ViT encoder + GPT decoder)
+ibnn_lm/ibnn_cnn.py      the paper's SPATIAL cross-difference conv in a CNN (the faithful test)
 ibnn_lm/train.py         training harness (cosine LR, early stop, checkpoints)
 ibnn_lm/evaluate.py      deterministic held-out BPC / perplexity
 ibnn_lm/generate.py      inference: prompt / stream / interactive REPL

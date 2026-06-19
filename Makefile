@@ -42,6 +42,9 @@ robustness: ## Does forgetting attention survive input-noise robustness + the me
 vlm: ## Train a toy Vision-Language Model on Fashion-MNIST with the IBNN neuron
 	$(PY) -m ibnn_lm.vlm --ffn ibnn --steps 800
 
+cnn: ## The real test: the paper's SPATIAL IBNN conv vs a standard CNN (+ data-efficiency)
+	$(PY) -m ibnn_lm.ibnn_cnn --seeds 0 1 2 3 4 5 --train_fracs 1.0 0.05 0.02
+
 train: ## Train one model (override FFN=ibnn ATTN=forget etc. via env if extended)
 	$(PY) -m ibnn_lm.train --dataset $(DATASET) --ffn ibnn --attn forget \
 		--d_model 128 --d_ff 256 --n_layer 3 --n_head 4 --block_size 128 \
