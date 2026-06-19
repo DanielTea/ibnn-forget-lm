@@ -151,6 +151,38 @@ the cost of **robustness** — it is the more accurate model on clean text but t
 under input perturbation, and it doesn't memorize less. The clean-BPC headline hides a fragility
 trade-off that the robustness/anti-memorization lens exposes.
 
+## Bonus: a real Vision-Language Model, with IBNN (`make vlm`)
+
+Can this setup train a VLM, and does IBNN — which failed on *text* — do any better on **images**,
+the domain it was actually designed for? We built a small from-scratch VLM on **Fashion-MNIST**
+(a real dataset, and one of the IBNN paper's own benchmarks): a ViT vision encoder + projector +
+this repo's GPT decoder. The IBNN neuron is used in the FFNs of **both** the encoder and decoder.
+
+```
+image --[ViT encoder]--> visual tokens --[project]--> prefix
+prefix + "a photo of a " --[GPT decoder]--> "a photo of a {class}."
+```
+
+**It works** — trained from scratch it reaches ~74% test accuracy and captions held-out images
+(`true=trouser → "a photo of a trouser."`), erring only on visually-confusable classes
+(boot↔sneaker, coat↔pullover). The model genuinely reads the image and writes what it sees.
+
+**Does IBNN help on images?** No — it ties, 3 seeds:
+
+| FFN neuron | Fashion-MNIST VLM accuracy |
+|---|---|
+| standard FFN | 74.27% ± 2.05 |
+| IBNN FFN | 74.12% ± 1.18 |
+
+(A tempting single-seed run showed IBNN +2.6%, but it was **seed noise** — a fresh SM seed hit
+76.3%.) This is consistent rather than surprising: the IBNN coupling runs over the FFN's
+**unordered channels** in *both* text and images — an image's spatial structure lives in the
+conv/patch axis, not the FFN channels — so the "no structure to exploit" null holds across
+modalities. The paper's CNN gains come from *spatial* coupling, which this FFN port never had.
+
+Run it: `python -m ibnn_lm.vlm --ffn ibnn --steps 800` (note: IBNN's O(d_ff²) term triggers a
+slow one-time MPS kernel compile on first run; the SM path is instant).
+
 ## Files
 
 ```
@@ -160,6 +192,7 @@ ibnn_lm/combo_test.py    the 2×2 factorial driver (FFN neuron × attention type
 ibnn_lm/attn_test.py     softmax vs forgetting attention (standard FFN)
 ibnn_lm/ideas_test.py    bake-off of new IBNN-FFN variants (gate / topology / sharpen)
 ibnn_lm/robustness.py    input-noise robustness + memorization gap (the §"survive?" probes)
+ibnn_lm/vlm.py           toy Vision-Language Model on Fashion-MNIST (ViT encoder + GPT decoder)
 ibnn_lm/train.py         training harness (cosine LR, early stop, checkpoints)
 ibnn_lm/evaluate.py      deterministic held-out BPC / perplexity
 ibnn_lm/generate.py      inference: prompt / stream / interactive REPL

@@ -39,6 +39,9 @@ ideas: ## Bake-off of NEW IBNN-FFN variants (gate / topology / sharpen) vs sm + 
 robustness: ## Does forgetting attention survive input-noise robustness + the memorization gap?
 	$(PY) -m ibnn_lm.robustness --dataset $(DATASET) --seeds 0 1 2 --steps 2000
 
+vlm: ## Train a toy Vision-Language Model on Fashion-MNIST with the IBNN neuron
+	$(PY) -m ibnn_lm.vlm --ffn ibnn --steps 800
+
 train: ## Train one model (override FFN=ibnn ATTN=forget etc. via env if extended)
 	$(PY) -m ibnn_lm.train --dataset $(DATASET) --ffn ibnn --attn forget \
 		--d_model 128 --d_ff 256 --n_layer 3 --n_head 4 --block_size 128 \
