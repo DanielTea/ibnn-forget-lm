@@ -186,6 +186,28 @@ class GPT(nn.Module):
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
         return logits, loss
 
+    def forward_embeds(self, x_emb, targets=None, loss_mask=None):
+        """Run the decoder on a precomputed (B, T, d_model) embedding sequence (positions added
+        here). Used by the VLM, which prepends projected visual tokens to text embeddings.
+        targets: (B, T) next-token ids; loss_mask: (B, T) bool selecting positions that count."""
+        B, T, _ = x_emb.shape
+        pos = torch.arange(T, device=x_emb.device)
+        x = self.drop(x_emb + self.pos_emb(pos))
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.ln_f(x)
+        logits = self.head(x)
+        loss = None
+        if targets is not None:
+            ll = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.reshape(-1),
+                                 reduction="none")
+            if loss_mask is not None:
+                m = loss_mask.reshape(-1).to(ll.dtype)
+                loss = (ll * m).sum() / m.sum().clamp(min=1)
+            else:
+                loss = ll.mean()
+        return logits, loss
+
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
         for _ in range(max_new_tokens):
