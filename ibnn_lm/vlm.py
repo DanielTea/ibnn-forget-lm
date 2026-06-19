@@ -30,6 +30,7 @@ import torch.nn.functional as F
 
 from .data import DATA_DIR
 from .layers import IBNNMLP
+from .ibnn_cnn import IBNNConv2d
 from .model import GPT, GPTConfig
 from .utils import get_device, set_seed, count_params
 
@@ -161,13 +162,43 @@ class VisionEncoder(nn.Module):
         return self.ln(x)
 
 
+class ConvVisionEncoder(nn.Module):
+    """A convolutional vision encoder whose convs use the paper's SPATIAL IBNN coupling
+    (coupling='ibnn') or are plain convs (coupling='standard'). This is the principled home for
+    IBNN: the conv couples over a pixel's spatial neighbours (a structured axis), unlike the ViT
+    encoder whose FFN couples over unordered channels. Output: out_grid^2 visual tokens."""
+    def __init__(self, d_model, coupling="standard", ch=32, num_iters=1, out_grid=4):
+        super().__init__()
+        self.c1 = IBNNConv2d(IN_CH, ch, 3, coupling=coupling, num_iters=num_iters)
+        self.bn1 = nn.BatchNorm2d(ch)
+        self.c2 = IBNNConv2d(ch, 2 * ch, 3, coupling=coupling, num_iters=num_iters)
+        self.bn2 = nn.BatchNorm2d(2 * ch)
+        self.proj = nn.Conv2d(2 * ch, d_model, 1)
+        self.out_grid = out_grid
+        self.n_patches = out_grid * out_grid
+        self.pos = nn.Parameter(torch.randn(1, self.n_patches, d_model) * 0.02)
+
+    def forward(self, img):
+        x = F.max_pool2d(F.gelu(self.bn1(self.c1(img))), 2)    # 28 -> 14
+        x = F.max_pool2d(F.gelu(self.bn2(self.c2(x))), 2)      # 14 -> 7
+        x = self.proj(x)                                       # (B, d_model, 7, 7)
+        x = F.adaptive_avg_pool2d(x, self.out_grid)           # (B, d_model, g, g)
+        return x.flatten(2).transpose(1, 2) + self.pos        # (B, g*g, d_model)
+
+
 # --------------------------------------------------------------------------- VLM
 class VLM(nn.Module):
     def __init__(self, vocab_size, d_model=192, enc_layers=3, dec_layers=3, n_head=6,
-                 block_size=64, ffn="sm", attn="softmax", dropout=0.1, d_ff=None):
+                 block_size=64, ffn="sm", attn="softmax", dropout=0.1, d_ff=None,
+                 encoder="vit", enc_coupling="standard"):
         super().__init__()
         d_ff = d_ff or 2 * d_model
-        self.encoder = VisionEncoder(d_model, n_layer=enc_layers, n_head=n_head, ffn=ffn, d_ff=d_ff)
+        if encoder == "conv":
+            # convolutional encoder with the paper's SPATIAL IBNN coupling (the right home for it)
+            self.encoder = ConvVisionEncoder(d_model, coupling=enc_coupling)
+        else:
+            self.encoder = VisionEncoder(d_model, n_layer=enc_layers, n_head=n_head,
+                                         ffn=ffn, d_ff=d_ff)
         self.proj = nn.Linear(d_model, d_model)
         self.n_patches = self.encoder.n_patches
         cfg = GPTConfig(vocab_size=vocab_size, block_size=block_size, n_layer=dec_layers,
@@ -242,6 +273,10 @@ def main():
     ap = argparse.ArgumentParser(description="Toy VLM on CIFAR-10 (IBNN-capable).")
     ap.add_argument("--ffn", choices=["ibnn", "sm"], default="ibnn")
     ap.add_argument("--attn", choices=["softmax", "forget"], default="softmax")
+    ap.add_argument("--encoder", choices=["vit", "conv"], default="vit",
+                    help="vision encoder: ViT (transformer) or conv (spatial-IBNN-capable)")
+    ap.add_argument("--enc_coupling", choices=["standard", "ibnn"], default="standard",
+                    help="conv encoder coupling: plain conv or the paper's spatial IBNN coupling")
     ap.add_argument("--d_model", type=int, default=192)
     ap.add_argument("--d_ff", type=int, default=256, help="FFN hidden width (keep modest for IBNN)")
     ap.add_argument("--enc_layers", type=int, default=3)
@@ -267,7 +302,7 @@ def main():
     vocab = CharVocab([caption_for(c) for c in range(10)])
     model = VLM(vocab.size, d_model=args.d_model, d_ff=args.d_ff, enc_layers=args.enc_layers,
                 dec_layers=args.dec_layers, n_head=args.n_head, ffn=args.ffn,
-                attn=args.attn).to(device)
+                attn=args.attn, encoder=args.encoder, enc_coupling=args.enc_coupling).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.05)
     print(f"VLM ffn={args.ffn} attn={args.attn} params={count_params(model):,} device={device}")
     print(f"train images={len(tr_x):,}  vocab={vocab.size}  patches={model.n_patches}\n")

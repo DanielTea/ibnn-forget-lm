@@ -25,8 +25,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .vlm import load_fashion_mnist, CLASSES
 from .utils import get_device, set_seed, count_params
+# load_fashion_mnist is imported lazily inside main() to avoid a circular import with vlm.py
 
 # 3x3 neighbourhood minus the centre (the centre's own difference is tanh(0)=0 anyway)
 NEIGHBORS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
@@ -130,6 +130,7 @@ def main():
     ap.add_argument("--device", type=str, default="auto")
     args = ap.parse_args()
 
+    from .vlm import load_fashion_mnist   # lazy import to avoid circular dependency
     device = get_device(args.device)
     tr_x, tr_y, te_x, te_y = load_fashion_mnist()
     print(f"spatial IBNN conv vs standard CNN on Fashion-MNIST  device={device}")
