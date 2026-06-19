@@ -242,21 +242,20 @@ convs, under **FGSM and PGD** attacks, over **8 seeds** (`ibnn_lm/adv_robustness
 With the **lite** layer (`num_iters=1`) the spatial coupling provides **no** adversarial
 robustness — both CNNs collapse identically (FGSM → ~7%, PGD → ~0%).
 
-**But with the FULL implicit solve (`num_iters=3`) it does — the first beyond-noise positive in
-this whole investigation.** Replicated across two runs (9 IBNN-n=3 seeds total):
+The **full implicit solve (`num_iters=3`)** at first *looked* like a win — a beyond-noise FGSM gap
+(FGSM ε=0.2: IBNN 8.2 ± 1.4 vs standard 4.0 ± 2.2, replicated over 9 seeds). **But it is GRADIENT
+MASKING, not robustness** — and FGSM-helps-but-PGD-doesn't is the textbook signature (Athalye,
+Carlini & Wagner 2018). A transfer-attack check (clean eval mode) settles it:
 
-| attack | standard CNN | spatial-IBNN, `num_iters=3` | Δ |
-|---|---|---|---|
-| clean | 90.6 ± 0.7 | 90.8 ± 1.4 | tie |
-| **FGSM ε=0.1** | 7.7 ± 1.8 | **~13–15** | **+6 (beyond noise)** |
-| **FGSM ε=0.2** | 4.0 ± 2.2 | **8.2 ± 1.4** | **+4.2 (beyond noise)** |
-| PGD ε=0.1 | ~0 | ~0 | tie (both die) |
+| IBNN-`n3` | clean | own FGSM ε=0.2 | transfer (std→IBNN) | PGD-10 | PGD-20 |
+|---|---|---|---|---|---|
+| | ~91 | ~7–9 | ~6–9 (≈ its own FGSM) | **0.0** | **0.0** |
 
-So the paper's headline (adversarial robustness) **partially reproduces — but only with the
-implicit equilibrium solve, only vs FGSM (PGD still kills both), at no clean-accuracy cost.** The
-equilibrium fixed point is mildly more stable to one-step perturbations; iterative PGD breaks it.
-This is modest and FGSM-only, but real and replicated — the lite layer shows nothing, the implicit
-layer shows a genuine effect, exactly in the paper's claimed domain.
+PGD drives it to **0%**, and standard-crafted adversarials transfer to it just as well as its own —
+i.e. the IBNN model is **exactly as fragile as the standard CNN**; the implicit solve merely makes
+the *one-step gradient* less useful to the attacker (obfuscation), inflating the FGSM number. So
+the paper's headline adversarial-robustness claim **does not reproduce** here: no real robustness,
+lite or implicit. (Lesson logged: always check FGSM gains with PGD + a transfer attack.)
 
 ### Both mechanisms under one roof: VLM image-corruption robustness (`make vlm-robust`)
 
