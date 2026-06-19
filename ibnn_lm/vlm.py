@@ -167,23 +167,21 @@ class ConvVisionEncoder(nn.Module):
     (coupling='ibnn') or are plain convs (coupling='standard'). This is the principled home for
     IBNN: the conv couples over a pixel's spatial neighbours (a structured axis), unlike the ViT
     encoder whose FFN couples over unordered channels. Output: out_grid^2 visual tokens."""
-    def __init__(self, d_model, coupling="standard", ch=32, num_iters=1, out_grid=4):
+    def __init__(self, d_model, coupling="standard", ch=32, num_iters=1):
         super().__init__()
         self.c1 = IBNNConv2d(IN_CH, ch, 3, coupling=coupling, num_iters=num_iters)
         self.bn1 = nn.BatchNorm2d(ch)
         self.c2 = IBNNConv2d(ch, 2 * ch, 3, coupling=coupling, num_iters=num_iters)
         self.bn2 = nn.BatchNorm2d(2 * ch)
         self.proj = nn.Conv2d(2 * ch, d_model, 1)
-        self.out_grid = out_grid
-        self.n_patches = out_grid * out_grid
+        self.n_patches = 7 * 7   # 28 -> 14 -> 7 (two 2x pools)
         self.pos = nn.Parameter(torch.randn(1, self.n_patches, d_model) * 0.02)
 
     def forward(self, img):
         x = F.max_pool2d(F.gelu(self.bn1(self.c1(img))), 2)    # 28 -> 14
         x = F.max_pool2d(F.gelu(self.bn2(self.c2(x))), 2)      # 14 -> 7
         x = self.proj(x)                                       # (B, d_model, 7, 7)
-        x = F.adaptive_avg_pool2d(x, self.out_grid)           # (B, d_model, g, g)
-        return x.flatten(2).transpose(1, 2) + self.pos        # (B, g*g, d_model)
+        return x.flatten(2).transpose(1, 2) + self.pos         # (B, 49, d_model)
 
 
 # --------------------------------------------------------------------------- VLM
@@ -201,6 +199,7 @@ class VLM(nn.Module):
                                          ffn=ffn, d_ff=d_ff)
         self.proj = nn.Linear(d_model, d_model)
         self.n_patches = self.encoder.n_patches
+        block_size = max(block_size, self.n_patches + 40)   # cover visual prefix + caption
         cfg = GPTConfig(vocab_size=vocab_size, block_size=block_size, n_layer=dec_layers,
                         n_head=n_head, d_model=d_model, d_ff=d_ff, dropout=dropout,
                         ffn=ffn, attn=attn)

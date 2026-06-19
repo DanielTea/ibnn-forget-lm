@@ -183,6 +183,20 @@ modalities. The paper's CNN gains come from *spatial* coupling, which this FFN p
 Run it: `python -m ibnn_lm.vlm --ffn ibnn --steps 800` (note: IBNN's O(d_ff²) term triggers a
 slow one-time MPS kernel compile on first run; the SM path is instant).
 
+**Putting IBNN where it works — a conv encoder with spatial coupling.** The ViT encoder above
+couples IBNN over unordered channels. The principled fix is a **convolutional** vision encoder
+(`--encoder conv`) whose convs use the paper's **spatial** coupling (`--enc_coupling ibnn`) — IBNN
+on a structured axis, inside the VLM. Holding the decoder fixed to isolate the encoder (4 seeds):
+
+| train data | standard conv encoder | spatial-IBNN conv encoder | Δ |
+|---|---|---|---|
+| 100% | 81.9 ± 1.8 | 81.7 ± 2.2 | −0.3 (tie) |
+| 5% | 80.2 ± 1.6 | 80.5 ± **0.6** | +0.3 (tie, lower variance) |
+
+Same honest verdict as the standalone CNN: spatial IBNN **ties in mean, with a small stability
+gain** (±0.6 vs ±1.6 at low data) — never worse, not clearly better. (A conv encoder also beats
+the tiny ViT encoder outright, ~82% vs ~74% — but that's a backbone choice, not an IBNN effect.)
+
 ## The real test: replicate the paper's SPATIAL coupling (`make cnn`)
 
 Every IBNN experiment above ported the neuron into an **FFN**, where the coupling runs over
