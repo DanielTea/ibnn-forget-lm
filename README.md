@@ -239,13 +239,58 @@ convs, under **FGSM and PGD** attacks, over **8 seeds** (`ibnn_lm/adv_robustness
 | FGSM ε=0.2 | 3.84 ± 2.32 | 4.89 ± 1.91 | +1.05 |
 | PGD ε=0.1 | 0.03 ± 0.09 | 0.00 ± 0.00 | ≈0 |
 
-**The spatial IBNN coupling provides no adversarial robustness — both CNNs collapse identically
-under attack** (FGSM → ~7%, PGD → ~0%). The coupling is active (per-seed FGSM swings widely) but
-adds *variance*, not robustness. So the paper's headline claim does **not** reproduce here.
-Caveats: this is the lite (`num_iters=1`) layer, Fashion-MNIST, one attack suite, no adversarial
-training — and "free" robustness from an architectural tweak (without adversarial training) is a
-priori unlikely. But across the faithful spatial replication, the honest verdict is: a small
-stability signal at low *clean*-data noise, and **nothing on adversarial robustness**.
+With the **lite** layer (`num_iters=1`) the spatial coupling provides **no** adversarial
+robustness — both CNNs collapse identically (FGSM → ~7%, PGD → ~0%).
+
+**But with the FULL implicit solve (`num_iters=3`) it does — the first beyond-noise positive in
+this whole investigation.** Replicated across two runs (9 IBNN-n=3 seeds total):
+
+| attack | standard CNN | spatial-IBNN, `num_iters=3` | Δ |
+|---|---|---|---|
+| clean | 90.6 ± 0.7 | 90.8 ± 1.4 | tie |
+| **FGSM ε=0.1** | 7.7 ± 1.8 | **~13–15** | **+6 (beyond noise)** |
+| **FGSM ε=0.2** | 4.0 ± 2.2 | **8.2 ± 1.4** | **+4.2 (beyond noise)** |
+| PGD ε=0.1 | ~0 | ~0 | tie (both die) |
+
+So the paper's headline (adversarial robustness) **partially reproduces — but only with the
+implicit equilibrium solve, only vs FGSM (PGD still kills both), at no clean-accuracy cost.** The
+equilibrium fixed point is mildly more stable to one-step perturbations; iterative PGD breaks it.
+This is modest and FGSM-only, but real and replicated — the lite layer shows nothing, the implicit
+layer shows a genuine effect, exactly in the paper's claimed domain.
+
+### Both mechanisms under one roof: VLM image-corruption robustness (`make vlm-robust`)
+
+A plain CNN has no attention, so the forget gate can't live there — the only place to test
+**both** mechanisms under a robustness lens is the VLM (vision encoder + token decoder). A
+multi-agent design panel hardened this (`ibnn_lm/vlm_robust.py`): it found and fixed a real bug
+(a forget gate in a VLM *forgets the visual prefix* and the cell collapses — fixed via fgate-bias
+init), pre-registered **one** inferential test on **retention** (acc_corrupt/acc_clean, paired by
+seed, to remove the clean-level confound), and logged λ-engagement to avoid the inert-coupling
+trap. Factorial: `{encoder: standard vs spatial-IBNN conv (num_iters=3)} × {decoder: softmax vs
+forget}`, 8 seeds, all cells clean-matched (~82–83%), λ engaged (~0.09), zero collapses.
+
+Retention (acc under corruption / clean acc, %, 8 seeds):
+
+| cell | gauss σ=0.2 | blur σ=1.2 (H1) | FGSM ε=0.2 | PGD |
+|---|---|---|---|---|
+| standard / softmax | 51 | 74 | 23 | 3 |
+| **IBNN / softmax** | **66** | 75 | 19 | 5 |
+| standard / forget | 51 | 73 | 18 | 2 |
+| **IBNN / forget** | **68** | 75 | 14 | 4 |
+
+- **Pre-registered primary (blur retention, IBNN vs standard encoder): NULL** — Δ +1.5%, bootstrap
+  95% CI [−0.7, +3.6] (includes 0).
+- **Exploratory but clean and consistent:** the spatial-IBNN encoder gives a **+15–17% retention
+  gain under additive Gaussian noise** (σ=0.2), on *both* decoder rows — mechanistically sensible
+  (the lateral coupling is a low-pass that cancels high-frequency additive noise). Not the
+  pre-registered test, so descriptive, but robust across cells and beyond noise.
+- **No adversarial benefit in the VLM** (IBNN encoder is slightly *worse* under FGSM — the
+  encoder's CNN-scale robustness is diluted by the standard decoder), and **the forget gate buys
+  no image robustness** (consistent with its text fragility).
+
+Net: spatial IBNN's benefit is **corruption-specific** — it helps where its low-pass nature
+applies (additive noise) and the FGSM/equilibrium case in a pure CNN, but it is *not* a general
+robustness win, and the forget gate doesn't help on the vision side at all.
 
 ## Files
 
@@ -259,6 +304,7 @@ ibnn_lm/robustness.py    input-noise robustness + memorization gap (the §"survi
 ibnn_lm/vlm.py           toy Vision-Language Model on Fashion-MNIST (ViT encoder + GPT decoder)
 ibnn_lm/ibnn_cnn.py      the paper's SPATIAL cross-difference conv in a CNN (the faithful test)
 ibnn_lm/adv_robustness.py deeper spatial-IBNN CNN vs standard CNN under FGSM/PGD (paper's claim)
+ibnn_lm/vlm_robust.py    VLM robustness factorial (encoder coupling x decoder forget), design-paneled
 ibnn_lm/train.py         training harness (cosine LR, early stop, checkpoints)
 ibnn_lm/evaluate.py      deterministic held-out BPC / perplexity
 ibnn_lm/generate.py      inference: prompt / stream / interactive REPL

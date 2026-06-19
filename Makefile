@@ -61,3 +61,6 @@ chat: ## Interactive generation REPL
 
 clean: ## Remove checkpoints and run logs (keeps data and venv)
 	rm -rf checkpoints runs runs_*.log
+
+vlm-robust: ## VLM robustness factorial: encoder coupling x decoder forget gate (8 seeds, resumable)
+	$(PY) -m ibnn_lm.vlm_robust --seeds 0 1 2 3 4 5 6 7
