@@ -226,6 +226,27 @@ FFN port on text was flat or *worse*. That qualitative difference (spatial ≥ s
 structured axis to couple over.** A rigorous claim of the data-efficiency benefit would need a
 more careful replication than a laptop 3-conv net at this noise level can provide.
 
+### The paper's HEADLINE claim: adversarial robustness (`make adv`)
+
+The IBNN paper led with **adversarial robustness**, not clean accuracy — so we tested that
+faithfully: a **deeper** 5-conv CNN with the spatial `IBNNConv2d` vs the identical CNN with plain
+convs, under **FGSM and PGD** attacks, over **8 seeds** (`ibnn_lm/adv_robustness.py`).
+
+| attack | standard CNN | spatial-IBNN CNN | Δ |
+|---|---|---|---|
+| clean | 90.98 ± 0.74 | 90.94 ± 0.60 | −0.04 |
+| FGSM ε=0.1 | 7.41 ± 1.67 | 7.44 ± 3.20 | +0.03 |
+| FGSM ε=0.2 | 3.84 ± 2.32 | 4.89 ± 1.91 | +1.05 |
+| PGD ε=0.1 | 0.03 ± 0.09 | 0.00 ± 0.00 | ≈0 |
+
+**The spatial IBNN coupling provides no adversarial robustness — both CNNs collapse identically
+under attack** (FGSM → ~7%, PGD → ~0%). The coupling is active (per-seed FGSM swings widely) but
+adds *variance*, not robustness. So the paper's headline claim does **not** reproduce here.
+Caveats: this is the lite (`num_iters=1`) layer, Fashion-MNIST, one attack suite, no adversarial
+training — and "free" robustness from an architectural tweak (without adversarial training) is a
+priori unlikely. But across the faithful spatial replication, the honest verdict is: a small
+stability signal at low *clean*-data noise, and **nothing on adversarial robustness**.
+
 ## Files
 
 ```
@@ -237,6 +258,7 @@ ibnn_lm/ideas_test.py    bake-off of new IBNN-FFN variants (gate / topology / sh
 ibnn_lm/robustness.py    input-noise robustness + memorization gap (the §"survive?" probes)
 ibnn_lm/vlm.py           toy Vision-Language Model on Fashion-MNIST (ViT encoder + GPT decoder)
 ibnn_lm/ibnn_cnn.py      the paper's SPATIAL cross-difference conv in a CNN (the faithful test)
+ibnn_lm/adv_robustness.py deeper spatial-IBNN CNN vs standard CNN under FGSM/PGD (paper's claim)
 ibnn_lm/train.py         training harness (cosine LR, early stop, checkpoints)
 ibnn_lm/evaluate.py      deterministic held-out BPC / perplexity
 ibnn_lm/generate.py      inference: prompt / stream / interactive REPL
